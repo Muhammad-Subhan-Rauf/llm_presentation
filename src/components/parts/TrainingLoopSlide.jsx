@@ -90,12 +90,24 @@ const getEdgeDelay = (layerIndex, step) => {
     return 0;
 };
 
+// Compute loss based on how far weights are from target
+const computeLoss = (weights) => {
+    let totalDiff = 0;
+    for (let i = 0; i < weights.length; i++) {
+        totalDiff += (weights[i] - TARGET_WEIGHTS[i]) ** 2;
+    }
+    return Math.min(totalDiff / weights.length, 1.0);
+};
+
 const TrainingLoopSlide = () => {
     const [step, setStep] = useState(0);
     const [epoch, setEpoch] = useState(1);
     const [weights, setWeights] = useState(() => generateInitialWeights(24));
+    const [lossHistory, setLossHistory] = useState([]);
 
     const connections = useMemo(() => generateConnections(LAYERS), []);
+
+    const currentLoss = computeLoss(weights);
 
     const steps = [
         {
@@ -104,7 +116,7 @@ const TrainingLoopSlide = () => {
         },
         {
             title: "2. Loss Function (The Scorecard)",
-            desc: "The network predicted 'Toaster' but the answer is 'Cat'. The Loss measures how wrong we are.",
+            desc: `The network predicted 'Toaster' but the answer is 'Cat'. Loss: ${currentLoss.toFixed(3)} - ${currentLoss > 0.5 ? 'still learning!' : currentLoss > 0.1 ? 'getting better!' : 'nearly perfect!'}`,
         },
         {
             title: "3. Backpropagation (The Blame Game)",
@@ -116,7 +128,7 @@ const TrainingLoopSlide = () => {
         },
         {
             title: "5. Repeat",
-            desc: `Epoch ${epoch} complete. This cycle repeats thousands of times until the network learns the correct answer.`,
+            desc: `Epoch ${epoch} complete. Loss dropped to ${currentLoss.toFixed(3)}. This cycle repeats thousands of times until the network learns.`,
         },
     ];
 
@@ -130,11 +142,32 @@ const TrainingLoopSlide = () => {
         }
         if (nextVal === 0 && step === 4) {
             setEpoch(prev => prev + 1);
+            setLossHistory(prev => [...prev, currentLoss]);
+        }
+        if (nextVal === 4) {
+            // Record loss when we reach the repeat step
+            setLossHistory(prev => {
+                if (prev.length === 0 || prev[prev.length - 1] !== currentLoss) {
+                    return [...prev, currentLoss];
+                }
+                return prev;
+            });
         }
         setStep(nextVal);
     };
 
     const isActive = step === 0 || step === 2 || step === 3;
+
+    // Loss chart dimensions
+    const CHART_W = 160;
+    const CHART_H = 70;
+    const chartPoints = lossHistory.length > 0
+        ? lossHistory.map((loss, i) => {
+            const x = (i / Math.max(lossHistory.length - 1, 1)) * (CHART_W - 10) + 5;
+            const y = CHART_H - 5 - (1 - loss) * (CHART_H - 10);
+            return `${x},${y}`;
+        }).join(' ')
+        : '';
 
     return (
         <Slide>
@@ -314,7 +347,7 @@ const TrainingLoopSlide = () => {
                                         initial={{ opacity: 0, y: 55 }}
                                         animate={{ opacity: 1, y: 45 }}
                                     >
-                                        Loss: 0.87
+                                        Loss: {currentLoss.toFixed(3)}
                                     </motion.text>
                                     <text x={738} y={115} fill="#4caf50" fontSize="16" fontWeight="bold">✓</text>
                                     <text x={738} y={315} fill="#ff4081" fontSize="16" fontWeight="bold">✗</text>
@@ -398,12 +431,68 @@ const TrainingLoopSlide = () => {
                     }}>
                         Epoch {epoch}
                     </div>
+
+                    {/* Loss chart (bottom-right corner) */}
+                    {lossHistory.length > 0 && (
+                        <div style={{
+                            position: 'absolute',
+                            bottom: '0.75rem',
+                            right: '0.75rem',
+                            background: 'rgba(0,0,0,0.6)',
+                            borderRadius: '0.5rem',
+                            padding: '0.4rem',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                        }}>
+                            <div style={{ fontSize: '0.6rem', color: '#888', marginBottom: '0.2rem', textAlign: 'center' }}>
+                                Loss over epochs
+                            </div>
+                            <svg width={CHART_W} height={CHART_H} viewBox={`0 0 ${CHART_W} ${CHART_H}`}>
+                                {/* Grid line */}
+                                <line x1="5" y1={CHART_H - 5} x2={CHART_W - 5} y2={CHART_H - 5} stroke="#333" strokeWidth="1" />
+                                <line x1="5" y1="5" x2="5" y2={CHART_H - 5} stroke="#333" strokeWidth="1" />
+                                {/* Loss line */}
+                                {lossHistory.length > 1 && (
+                                    <polyline
+                                        points={chartPoints}
+                                        fill="none"
+                                        stroke="#ff4081"
+                                        strokeWidth="2"
+                                        strokeLinejoin="round"
+                                    />
+                                )}
+                                {/* Data points */}
+                                {lossHistory.map((loss, i) => {
+                                    const x = (i / Math.max(lossHistory.length - 1, 1)) * (CHART_W - 10) + 5;
+                                    const y = CHART_H - 5 - (1 - loss) * (CHART_H - 10);
+                                    return (
+                                        <circle key={i} cx={x} cy={y} r="3" fill="#ff4081" />
+                                    );
+                                })}
+                            </svg>
+                        </div>
+                    )}
+
+                    {/* Accuracy indicator */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '0.75rem',
+                        left: '1rem',
+                        background: 'rgba(0,0,0,0.5)',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '1rem',
+                        fontSize: '0.75rem',
+                        color: currentLoss < 0.1 ? '#4caf50' : currentLoss < 0.5 ? '#ffab40' : '#ff4081',
+                        fontWeight: 'bold',
+                        border: `1px solid ${currentLoss < 0.1 ? '#4caf5040' : currentLoss < 0.5 ? '#ffab4040' : '#ff408140'}`,
+                    }}>
+                        Accuracy: {((1 - currentLoss) * 100).toFixed(0)}%
+                    </div>
                 </div>
 
                 {/* Controls */}
                 <div style={{ textAlign: 'center' }}>
                     <h3 style={{ color: 'var(--highlight-color)' }}>{steps[step].title}</h3>
-                    <p style={{ height: '3rem', margin: '0.5rem 0' }}>{steps[step].desc}</p>
+                    <p style={{ height: '3rem', margin: '0.5rem 0', fontSize: '0.9rem' }}>{steps[step].desc}</p>
                     <button
                         onClick={nextStep}
                         className="feature-pill"

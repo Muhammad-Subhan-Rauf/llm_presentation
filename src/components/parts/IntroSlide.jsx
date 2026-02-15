@@ -44,9 +44,9 @@ const IntroSlide = () => {
                     style={{ marginTop: '3rem', display: 'flex', gap: '2rem' }}
                 >
                     {/* Decorative elements representing the 3 main parts */}
-                    <div className="feature-pill">Parameters & Weights</div>
-                    <div className="feature-pill">Tokenization & Context</div>
-                    <div className="feature-pill">Training Loop</div>
+                    <div className="feature-pill">Neural Networks & Training</div>
+                    <div className="feature-pill">From Text to Numbers</div>
+                    <div className="feature-pill">Understanding & Generation</div>
                 </motion.div>
             </div>
         </Slide>
