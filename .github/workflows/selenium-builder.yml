@@ -1,0 +1,51 @@
+name: Selenium Builder Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  selenium-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Selenium Tests
+        id: trigger
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "${{ secrets.SB_API_URL }}/ci/runs/" \
+            -H "Authorization: Bearer ${{ secrets.SB_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"flow_id": FLOW_ID_HERE}')
+          RUN_ID=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for Results
+        run: |
+          STATUS="PENDING"
+          while [ "$STATUS" = "PENDING" ] || [ "$STATUS" = "RUNNING" ]; do
+            RESPONSE=$(curl -sf \
+              "${{ secrets.SB_API_URL }}/ci/runs/${{ steps.trigger.outputs.run_id }}/wait/" \
+              -H "Authorization: Bearer ${{ secrets.SB_API_TOKEN }}")
+            STATUS=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          done
+          if [ "$STATUS" != "COMPLETED" ]; then
+            echo "Test failed with status: $STATUS"
+            exit 1
+          fi
+          echo "Tests passed!"
+
+      - name: Download Artifacts
+        if: always()
+        run: |
+          curl -sf -o test-results.zip \
+            "${{ secrets.SB_API_URL }}/ci/runs/${{ steps.trigger.outputs.run_id }}/download/" \
+            -H "Authorization: Bearer ${{ secrets.SB_API_TOKEN }}" || true
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-results
+          path: test-results.zip
+          if-no-files-found: ignore
